@@ -82,3 +82,20 @@ from abstraction import PetrolEngine
 
 my_list = [1, 2, 3]
 print(my_list[ - 1])
+
+# Talk about Slice
+"""
+Slice is a technique to get some elements from an array or iterable Data Structre (like list, tuple, strings, range etc)
+Syntax: sequence[start : stop : step]
+"""
+
+arr = [10, 20, 30, 40, 50, 60]
+print(arr[::-1])
+print(arr[::2])
+arr = ['a', 'b', 'c', 'd', 'e']
+# We want 5th element
+print(arr[5])
+
+# Lambda
+# Exception Handling
+# File Handling

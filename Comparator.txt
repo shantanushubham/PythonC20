@@ -1,0 +1,21 @@
+Comparator is something that is used to compare two objects.
+
+A comparator comparting two objects say A & B.
+A comparator always returns a integer.
+If the integer is -ve, then A < B
+If the integer is 0, then A = B
+If the integer is +ve, the  A > B
+
+A comparator always takes 2 arguments, A and B
+As developers, we have to write the logic of comparion of two elements A and B
+
+IN THIS CASE: A is a tuple and B is also a tuple
+
+// Python
+lambda a, b: a[-1] - b[-1] IS WRONG
+lambda a: a[-1]
+
+// Java
+Comparator<List<Integer>> c = (a, b) => {
+  return a.get(a.size() - 1) - b.get(b.size() - 1)
+}
