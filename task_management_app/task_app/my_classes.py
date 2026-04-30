@@ -2,7 +2,8 @@ import datetime
 
 class Task:
 
-  def __init__(self, owner: str, title: str, description: str, due_at: datetime.date) -> None:
+  def __init__(self, id: int, owner: str, title: str, description: str, due_at: datetime.date) -> None:
+    self.id = id
     self.owner = owner
     self.title = title
     self.description = description

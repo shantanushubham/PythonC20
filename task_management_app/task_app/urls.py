@@ -17,10 +17,15 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
-from task_app.views import add_two_numbers, create_task
+from task_app.views import add_two_numbers, create_task, get_all_tasks, task_detail
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('add/', add_two_numbers),
-    path('create_task/', create_task)
+    path('tasks/', get_all_tasks),
+    path('tasks/create/', create_task),
+    path('tasks/<int:task_id>/', task_detail),
 ]
+
+# www.airtribe.live/add?a=10&b=20 -- here a and b are request parameter and the URL is "/add"
+# www.airtribe.live/tasks/1 - here 1 is a path parameter and the URL is "/tasks/1"
