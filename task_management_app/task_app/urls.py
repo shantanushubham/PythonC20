@@ -24,7 +24,7 @@ urlpatterns = [
     path('add/', add_two_numbers),
     path('tasks/', get_all_tasks),
     path('tasks/create/', create_task),
-    path('tasks/<int:task_id>/', task_detail),
+    path('tasks/<uuid:task_id>/', task_detail),
 ]
 
 # www.airtribe.live/add?a=10&b=20 -- here a and b are request parameter and the URL is "/add"
