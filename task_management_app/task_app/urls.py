@@ -16,16 +16,24 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from rest_framework.routers import DefaultRouter
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
-from task_app.views import add_two_numbers, create_task, get_all_tasks, task_detail
+from task_app.views import TaskViewSet, add_two_numbers
+
+
+router = DefaultRouter()
+router.register(r'tasks', TaskViewSet, basename='task')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('add/', add_two_numbers),
-    path('tasks/', get_all_tasks),
-    path('tasks/create/', create_task),
-    path('tasks/<uuid:task_id>/', task_detail),
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
+
+urlpatterns.extend(router.urls)
 
 # www.airtribe.live/add?a=10&b=20 -- here a and b are request parameter and the URL is "/add"
 # www.airtribe.live/tasks/1 - here 1 is a path parameter and the URL is "/tasks/1"
