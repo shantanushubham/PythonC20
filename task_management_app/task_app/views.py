@@ -1,21 +1,29 @@
 import json
 import uuid
+from django.db import connection
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action, api_view
-from rest_framework.views import Request, Response
+from rest_framework.views import APIView, Request, Response
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 
 from task_app import serialisers
-from task_app.models import Task
-from task_app.serialisers import TaskSerialiser
+from task_app.models import Task, User
+from task_app.serialisers import (
+    LoginSerialiser,
+    SignUpSerialiser,
+    TaskSerialiser,
+    UserSerialiser,
+)
+from task_app.utils import JWTUtil
 
 
 class TaskPagination(PageNumberPagination):
     page_size = 5
     page_size_query_param = "page_size"
     max_page_size = 50
+
 
 TASKS_FILE = (
     "/Users/shantanu/B/AirTribe/PythonC20/task_management_app/task_app/data/tasks.json"
@@ -38,12 +46,23 @@ def write_tasks(tasks: list[dict]):
 @extend_schema(
     summary="Add two numbers",
     parameters=[
-        OpenApiParameter(name="a", type=int, location=OpenApiParameter.QUERY, required=True, description="First number"),
-        OpenApiParameter(name="b", type=int, location=OpenApiParameter.QUERY, required=True, description="Second number"),
+        OpenApiParameter(
+            name="a",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="First number",
+        ),
+        OpenApiParameter(
+            name="b",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="Second number",
+        ),
     ],
     responses=inline_serializer(
-        name="AddTwoNumbersResponse",
-        fields={"sum": drf_serializers.IntegerField()},
+        name="AddTwoNumbersResponse", fields={"sum": drf_serializers.IntegerField()}
     ),
 )
 @api_view(["GET"])
@@ -60,96 +79,121 @@ class TaskViewSet(viewsets.ModelViewSet):
     pagination_class = TaskPagination
 
     # GET /tasks/?status=PENDING
+    # Uses Model.objects.raw() — returns model instances, works directly with the serialiser.
     def list(self, request):
-        queryset = Task.objects.all()
-
         status_filter = request.query_params.get("status")
+
         if status_filter is not None:
             status_filter = status_filter.upper()
             valid_statuses = Task.Status.values
             if status_filter not in valid_statuses:
                 return Response(
-                    data={"error": f"Invalid status. Choose from: {', '.join(valid_statuses)}"},
+                    data={
+                        "error": f"Invalid status. Choose from: {', '.join(valid_statuses)}"
+                    },
                     status=400,
                 )
-            queryset = queryset.filter(status=status_filter)
+            # Raw SQL with a parameterised WHERE clause (%s prevents SQL injection)
+            tasks = list(
+                Task.objects.raw(
+                    "SELECT * FROM task_app_task WHERE status = %s", [status_filter]
+                )
+            )
+        else:
+            tasks = list(Task.objects.raw("SELECT * FROM task_app_task"))
 
-        page = self.paginate_queryset(queryset)
+        page = self.paginate_queryset(tasks)
         if page is not None:
             serializer = TaskSerialiser(page, many=True)
             return self.get_paginated_response(serializer.data)
-        serializer = TaskSerialiser(queryset, many=True)
+        serializer = TaskSerialiser(tasks, many=True)
         return Response(serializer.data, status=200)
 
-    # # GET /tasks/<pk>/
-    def retrieve(self, request, pk=None):
-        try:
-            # task = Task.objects.get(id=pk)
-            # serializer = TaskSerialiser(task)
-            # return Response(serializer.data, status=200)
-            return Response(data={"message": "Hello World"}, status=200)
-        except Task.DoesNotExist:
-            return Response(data={"error": "Task not found"}, status=404)
-
-
-    # POST /tasks/views/<pk>/mark_complete/
+    # POST /tasks/<pk>/mark_complete/
+    # Uses connection.cursor() — direct cursor execution for UPDATE.
     @action(detail=True, methods=["POST"], url_path="mark_complete")
     def mark_complete(self, request, pk=None):
-        try:
-            task = Task.objects.get(id=pk)
-        except Task.DoesNotExist:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, status FROM task_app_task WHERE id = %s", [pk])
+            row = cursor.fetchone()
+
+        if not row:
             return Response(data={"error": "Task not found"}, status=404)
-        if task.status == Task.Status.DONE:
-            return Response(data={"message": "Task is already marked as complete"}, status=200)
-        task.status = Task.Status.DONE
-        task.save()
-        serializer = TaskSerialiser(task)
-        return Response(data={"message": "Task marked as complete", "task": serializer.data}, status=200)
 
-    # # POST /tasks/
-    # def create(self, request):
-    #     serializer = TaskSerialiser(data=request.data)
-    #     if not serializer.is_valid():
-    #         return Response(data=serializer.errors, status=400)
-    #     serializer.save()
-    #     return Response(data={"message": "Task created", "task": serializer.data}, status=201)
+        _task_id, task_status = row
+        if task_status == Task.Status.DONE:
+            return Response(
+                data={"message": "Task is already marked as complete"}, status=200
+            )
 
-    # # PUT /tasks/<pk>/
-    # def update(self, request, pk=None):
-    #     try:
-    #         task = Task.objects.get(id=pk)
-    #     except Task.DoesNotExist:
-    #         return Response(data={"error": "Task not found"}, status=404)
-    #     serializer = TaskSerialiser(task, data=request.data)
-    #     if not serializer.is_valid():
-    #         return Response(data=serializer.errors, status=400)
-    #     serializer.save()
-    #     return Response(data={"message": "Task updated", "task": serializer.data}, status=200)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE task_app_task SET status = %s WHERE id = %s",
+                [Task.Status.DONE, pk],
+            )
 
-    # # PATCH /tasks/<pk>/
-    # def partial_update(self, request, pk=None):
-    #     try:
-    #         task = Task.objects.get(id=pk)
-    #     except Task.DoesNotExist:
-    #         return Response(data={"error": "Task not found"}, status=404)
-    #     serializer = TaskSerialiser(task, data=request.data, partial=True)
-    #     if not serializer.is_valid():
-    #         return Response(data=serializer.errors, status=400)
-    #     serializer.save()
-    #     return Response(data={"message": "Task updated", "task": serializer.data}, status=200)
+        # Fetch the updated row as a model instance to pass into the serialiser
+        updated_task = Task.objects.raw(
+            "SELECT * FROM task_app_task WHERE id = %s", [pk]
+        )[0]
+        serializer = TaskSerialiser(updated_task)
+        return Response(
+            data={"message": "Task marked as complete", "task": serializer.data},
+            status=200,
+        )
 
-    # # DELETE /tasks/<pk>/
-    # def destroy(self, request, pk=None):
-    #     try:
-    #         task = Task.objects.get(id=pk)
-    #     except Task.DoesNotExist:
-    #         return Response(data={"error": "Task not found"}, status=404)
-    #     task_data = TaskSerialiser(task).data
-    #     task.delete()
-    #     return Response(data={"message": "Task deleted", "task": task_data}, status=200)
+    # GET /tasks/in_progress/
+    # Uses connection.cursor() with a JOIN — returns raw column data as dicts.
+    @action(detail=False, methods=["GET"], url_path="in_progress")
+    def test_function(self, request):
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT t.*
+                    FROM task_app_task t
+                    INNER JOIN task_app_user u ON t.owner_id = u.id
+                    WHERE t.status = %s
+                      AND CONCAT(u.first_name, ' ', u.last_name) = %s
+                """,
+                    [Task.Status.IN_PROGRESS, "Ananya Gupta"],
+                )
+
+                columns = [col.name for col in cursor.description]
+                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+            return Response(data=rows, status=200)
+        except Exception as e:
+            return Response(data={"error": str(e)}, status=500)
 
 
-# Activity
-# 1. Create an API that Fetches all tasks of a given user
-# 2. Create an API that fetches the upcoming tasks of a user that are PENDING.
-# 3. Create an API that fetches all the completed tasks in a gievn date range, for a given user.
+class UserViewSet(viewsets.ModelViewSet):
+
+    queryset = User.objects.all()
+    serializer_class = UserSerialiser
+
+
+class LoginView(APIView):
+
+    def post(self, request: Request):
+        serialiser = LoginSerialiser(data=request.data)
+        if not serialiser.is_valid():
+            return Response(data=serialiser.errors, status=400)
+        user = serialiser.validated_data["user"]
+        token = JWTUtil.create_token(user.id)
+        return Response(
+            data={"user": UserSerialiser(user).data, "token": token}, status=200
+        )
+
+
+class SignUpView(APIView):
+
+    def post(self, request: Request):
+        serialiser = SignUpSerialiser(data=request.data)
+        if not serialiser.is_valid():
+            return Response(data=serialiser.errors, status=400)
+        user = serialiser.save()
+        token = JWTUtil.create_token(user.id)
+        return Response(
+            data={"user": UserSerialiser(user).data, "token": token}, status=201
+        )

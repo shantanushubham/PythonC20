@@ -1,0 +1,16 @@
+{
+  "sqltools.connections": [
+    {
+      "ssh": "Disabled",
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "Task Managemeny C20",
+      "group": "AirTribe",
+      "database": "task_db",
+      "username": "task_user",
+      "password": "task_password"
+    }
+  ]
+}

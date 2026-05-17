@@ -19,11 +19,12 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
-from task_app.views import TaskViewSet, add_two_numbers
+from task_app.views import TaskViewSet, UserViewSet, add_two_numbers, LoginView, SignUpView
 
 
 router = DefaultRouter()
 router.register(r'tasks', TaskViewSet, basename='task')
+router.register(r'users', UserViewSet, basename='user')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -31,6 +32,8 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path('api/auth/login/', LoginView.as_view()),
+    path('api/auth/signup/', SignUpView.as_view())
 ]
 
 urlpatterns.extend(router.urls)
