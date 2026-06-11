@@ -34,6 +34,7 @@ from task_app.views import (
     UserViewSet,
     LoginView,
     SignUpView,
+    ProduceEventView,
 )
 
 
@@ -55,6 +56,7 @@ urlpatterns = [
     path("api/demo/sync-tasks/", SyncTaskDemoView.as_view()),
     path("api/demo/async-tasks/", AsyncTaskDemoView.as_view()),
     path("api/demo/sync-to-async/", AsyncSyncToAsyncDemoView.as_view()),
+    path("api/events/produce/", ProduceEventView.as_view()),
 ]
 
 urlpatterns.extend(router.urls)

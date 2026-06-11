@@ -15,6 +15,7 @@ from task_app.serialisers import (
     TaskSerialiser,
     UserSerialiser,
 )
+from task_app.tasks import process_event
 from task_app.utils import JWTUtil
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,21 @@ class SignUpView(APIView):
         return Response(
             data={"user": UserSerialiser(user).data, "token": token}, status=201
         )
+
+class ProduceEventView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request: Request):
+        message = request.data.get("message")
+        logger.info("op=post view=ProduceEventView message=%s", message)
+        if not message:
+            return Response(data={"error": "'message' field is required"}, status=400)
+        result = process_event.delay(message)
+        logger.info("op=post view=ProduceEventView status=success task_id=%s", result.id)
+        return Response(data={"task_id": result.id}, status=202)
+
 
 # Tasks:
 # 1. Task priority — add a priority field (LOW, MEDIUM, HIGH) to the Task model, 
