@@ -1,6 +1,10 @@
 from datetime import date
+import logging
 import uuid
 from django.db import models
+
+logger = logging.getLogger(__name__)
+
 
 class User(models.Model):
 
@@ -12,20 +16,29 @@ class User(models.Model):
     password = models.CharField(max_length=255)
 
     def save(self, *args, **kwargs):
+      logger.info("op=save model=User user_id=%s username=%s", self.id, self.username)
       today = date.today()
       current_year = today.year
       birth_year = self.dob.year
       if current_year - birth_year < 18:
+        logger.warning("op=save model=User status=failed reason=underage user_id=%s", self.id)
         raise ValueError("Age is less than 18")
 
       elif current_year - birth_year == 18:
         if today.month == self.dob.month:
           if today.day < self.dob.day:
+            logger.warning("op=save model=User status=failed reason=underage user_id=%s", self.id)
             raise ValueError("Age is less than 18")
         elif today.month < self.dob.month:
+          logger.warning("op=save model=User status=failed reason=underage user_id=%s", self.id)
           raise ValueError("Age is less than 18")
       
       super().save(*args, **kwargs)
+      logger.info("op=save model=User status=success user_id=%s", self.id)
+
+    @property
+    def is_authenticated(self):
+        return True
 
     def __str__(self):
       return f"{self.first_name} {self.last_name}"
@@ -46,9 +59,12 @@ class Task(models.Model):
   due_at = models.DateField()
 
   def save(self, *args, **kwargs):
+    logger.info("op=save model=Task task_id=%s owner_id=%s", self.id, self.owner_id)
     if self.due_at and self.created_at and self.due_at <= self.created_at:
+      logger.warning("op=save model=Task status=failed reason=invalid_due_at task_id=%s", self.id)
       raise ValueError("due_at must be after created_at")
     super().save(*args, **kwargs)
+    logger.info("op=save model=Task status=success task_id=%s", self.id)
 
   def __str__(self):
     return f"{self.title} ({self.owner})"

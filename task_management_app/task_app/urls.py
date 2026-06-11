@@ -14,26 +14,47 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path
 from rest_framework.routers import DefaultRouter
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularSwaggerView,
+    SpectacularRedocView,
+)
 
-from task_app.views import TaskViewSet, UserViewSet, add_two_numbers, LoginView, SignUpView
+from task_app.demo_views import (
+    AsyncSyncToAsyncDemoView,
+    AsyncTaskDemoView,
+    SyncTaskDemoView,
+)
+from task_app.views import (
+    TaskViewSet,
+    UserViewSet,
+    LoginView,
+    SignUpView,
+)
 
 
 router = DefaultRouter()
-router.register(r'tasks', TaskViewSet, basename='task')
-router.register(r'users', UserViewSet, basename='user')
+router.register(r"tasks", TaskViewSet, basename="task")
+router.register(r"users", UserViewSet, basename="user")
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('add/', add_two_numbers),
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    path('api/auth/login/', LoginView.as_view()),
-    path('api/auth/signup/', SignUpView.as_view())
+    path("admin/", admin.site.urls),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    path("api/auth/login/", LoginView.as_view()),
+    path("api/auth/signup/", SignUpView.as_view()),
+    path("api/demo/sync-tasks/", SyncTaskDemoView.as_view()),
+    path("api/demo/async-tasks/", AsyncTaskDemoView.as_view()),
+    path("api/demo/sync-to-async/", AsyncSyncToAsyncDemoView.as_view()),
 ]
 
 urlpatterns.extend(router.urls)
