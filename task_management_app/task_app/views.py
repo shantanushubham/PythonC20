@@ -1,6 +1,6 @@
 import logging
 
-from django.db import connection
+from asgiref.sync import sync_to_async
 from rest_framework.decorators import action
 from rest_framework.views import APIView, Request, Response
 from rest_framework import viewsets
@@ -35,7 +35,6 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     # GET /tasks/?status=PENDING
-    # Uses Model.objects.raw() — returns model instances, works directly with the serialiser.
     def list(self, request):
         status_filter = request.query_params.get("status")
         logger.info("op=list status_filter=%s user_id=%s", status_filter, request.user.id)
@@ -54,16 +53,11 @@ class TaskViewSet(viewsets.ModelViewSet):
                     },
                     status=400,
                 )
-            # Raw SQL with a parameterised WHERE clause (%s prevents SQL injection)
-            tasks = list(
-                Task.objects.raw(
-                    "SELECT * FROM task_app_task WHERE status = %s", [status_filter]
-                )
-            )
+            tasks = Task.objects.filter(status=status_filter)
         else:
-            tasks = list(Task.objects.raw("SELECT * FROM task_app_task"))
+            tasks = Task.objects.all()
 
-        logger.info("op=list status=success count=%s", len(tasks))
+        logger.info("op=list status=success count=%s", tasks.count())
         page = self.paginate_queryset(tasks)
         if page is not None:
             serializer = TaskSerialiser(page, many=True)
@@ -77,36 +71,24 @@ class TaskViewSet(viewsets.ModelViewSet):
         logger.info("op=perform_create status=success task_id=%s", serializer.instance.id)
 
     # POST /tasks/<pk>/mark_complete/
-    # Uses connection.cursor() — direct cursor execution for UPDATE.
     @action(detail=True, methods=["POST"], url_path="mark_complete")
     def mark_complete(self, request, pk=None):
         logger.info("op=mark_complete task_id=%s user_id=%s", pk, request.user.id)
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT id, status FROM task_app_task WHERE id = %s", [pk])
-            row = cursor.fetchone()
-
-        if not row:
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
             logger.warning("op=mark_complete status=failed reason=task_not_found task_id=%s", pk)
             return Response(data={"error": "Task not found"}, status=404)
 
-        _task_id, task_status = row
-        if task_status == Task.Status.DONE:
+        if task.status == Task.Status.DONE:
             logger.info("op=mark_complete status=skipped reason=already_complete task_id=%s", pk)
             return Response(
                 data={"message": "Task is already marked as complete"}, status=200
             )
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "UPDATE task_app_task SET status = %s WHERE id = %s",
-                [Task.Status.DONE, pk],
-            )
-
-        # Fetch the updated row as a model instance to pass into the serialiser
-        updated_task = Task.objects.raw(
-            "SELECT * FROM task_app_task WHERE id = %s", [pk]
-        )[0]
-        serializer = TaskSerialiser(updated_task)
+        task.status = Task.Status.DONE
+        task.save()
+        serializer = TaskSerialiser(task)
         logger.info("op=mark_complete status=success task_id=%s", pk)
         return Response(
             data={"message": "Task marked as complete", "task": serializer.data},
@@ -114,26 +96,17 @@ class TaskViewSet(viewsets.ModelViewSet):
         )
 
     # GET /tasks/in_progress/
-    # Uses connection.cursor() with a JOIN — returns raw column data as dicts.
     @action(detail=False, methods=["GET"], url_path="in_progress")
     def test_function(self, request):
         logger.info("op=test_function user_id=%s", request.user.id)
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT t.*
-                    FROM task_app_task t
-                    INNER JOIN task_app_user u ON t.owner_id = u.id
-                    WHERE t.status = %s
-                      AND CONCAT(u.first_name, ' ', u.last_name) = %s
-                """,
-                    [Task.Status.IN_PROGRESS, "Ananya Gupta"],
-                )
-
-                columns = [col.name for col in cursor.description]
-                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
+            rows = list(
+                Task.objects.filter(
+                    status=Task.Status.IN_PROGRESS,
+                    owner__first_name="Ananya",
+                    owner__last_name="Gupta",
+                ).values()
+            )
             logger.info("op=test_function status=success count=%s", len(rows))
             return Response(data=rows, status=200)
         except Exception as e:
@@ -205,3 +178,9 @@ class ProduceEventView(APIView):
 # 2. Overdue tasks endpoint — GET /tasks/overdue/ — return tasks 
 #    where due_at < today and status != DONE
 # 3. Write tests (using AI is fine)
+
+
+async def read():
+    tasks = sync_to_async(Task.objects.all())
+
+read()
