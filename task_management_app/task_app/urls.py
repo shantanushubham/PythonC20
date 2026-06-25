@@ -27,6 +27,7 @@ from drf_spectacular.views import (
 from task_app.demo_views import (
     AsyncSyncToAsyncDemoView,
     AsyncTaskDemoView,
+    GracefulShutdownDemoView,
     SyncTaskDemoView,
 )
 from task_app.views import (
@@ -34,6 +35,7 @@ from task_app.views import (
     UserViewSet,
     LoginView,
     SignUpView,
+    HealthCheckView,
     ProduceEventView,
 )
 
@@ -51,11 +53,13 @@ urlpatterns = [
         name="swagger-ui",
     ),
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    path("api/health/", HealthCheckView.as_view()),
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/signup/", SignUpView.as_view()),
     path("api/demo/sync-tasks/", SyncTaskDemoView.as_view()),
     path("api/demo/async-tasks/", AsyncTaskDemoView.as_view()),
     path("api/demo/sync-to-async/", AsyncSyncToAsyncDemoView.as_view()),
+    path("api/demo/graceful-shutdown/", GracefulShutdownDemoView.as_view()),
     path("api/events/produce/", ProduceEventView.as_view()),
 ]
 

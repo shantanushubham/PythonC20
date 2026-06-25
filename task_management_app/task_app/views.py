@@ -1,6 +1,9 @@
 import logging
 
+import redis
 from asgiref.sync import sync_to_async
+from django.conf import settings
+from django.db import connection
 from rest_framework.decorators import action
 from rest_framework.views import APIView, Request, Response
 from rest_framework import viewsets
@@ -99,19 +102,15 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["GET"], url_path="in_progress")
     def test_function(self, request):
         logger.info("op=test_function user_id=%s", request.user.id)
-        try:
-            rows = list(
-                Task.objects.filter(
-                    status=Task.Status.IN_PROGRESS,
-                    owner__first_name="Ananya",
-                    owner__last_name="Gupta",
-                ).values()
-            )
-            logger.info("op=test_function status=success count=%s", len(rows))
-            return Response(data=rows, status=200)
-        except Exception as e:
-            logger.error("op=test_function status=failed reason=%s", e)
-            return Response(data={"error": str(e)}, status=500)
+        rows = list(
+            Task.objects.filter(
+                status=Task.Status.IN_PROGRESS,
+                owner__first_name="Ananya",
+                owner__last_name="Gupta",
+            ).values()
+        )
+        logger.info("op=test_function status=success count=%s", len(rows))
+        return Response(data=rows, status=200)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -157,6 +156,40 @@ class SignUpView(APIView):
             data={"user": UserSerialiser(user).data, "token": token}, status=201
         )
 
+class HealthCheckView(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request: Request):
+        checks = {
+            "database": self._check_database(),
+            "redis": self._check_redis(),
+        }
+        healthy = all(check["status"] == "ok" for check in checks.values())
+        return Response(
+            data={"status": "ok" if healthy else "error", "checks": checks},
+            status=200 if healthy else 503,
+        )
+
+    def _check_database(self):
+        try:
+            connection.ensure_connection()
+            return {"status": "ok"}
+        except Exception as exc:
+            logger.warning("op=health_check component=database status=failed error=%s", exc)
+            return {"status": "error", "error": str(exc)}
+
+    def _check_redis(self):
+        try:
+            client = redis.from_url(settings.CELERY_BROKER_URL)
+            client.ping()
+            return {"status": "ok"}
+        except Exception as exc:
+            logger.warning("op=health_check component=redis status=failed error=%s", exc)
+            return {"status": "error", "error": str(exc)}
+
+
 class ProduceEventView(APIView):
 
     authentication_classes = []
@@ -172,15 +205,7 @@ class ProduceEventView(APIView):
         return Response(data={"task_id": result.id}, status=202)
 
 
-# Tasks:
-# 1. Task priority — add a priority field (LOW, MEDIUM, HIGH) to the Task model, 
-#    filter by it the same way status filtering is already done.
-# 2. Overdue tasks endpoint — GET /tasks/overdue/ — return tasks 
-#    where due_at < today and status != DONE
-# 3. Write tests (using AI is fine)
 
+def divide(a, b):
+    return Response(data=a / b, status=200)
 
-async def read():
-    tasks = sync_to_async(Task.objects.all())
-
-read()

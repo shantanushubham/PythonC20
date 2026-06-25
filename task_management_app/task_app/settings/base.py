@@ -38,6 +38,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "task_app.authentication.JWTAuthentication",
     ],
+    "EXCEPTION_HANDLER": "task_app.exceptions.custom_exception_handler",
 }
 
 SPECTACULAR_SETTINGS = {

@@ -2,6 +2,7 @@ import uuid
 from datetime import date, timedelta, datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import redis
 from django.test import TestCase, RequestFactory
 from rest_framework.test import APITestCase, APIClient
 from rest_framework.exceptions import AuthenticationFailed
@@ -296,6 +297,46 @@ class JWTAuthenticationTests(TestCase):
 # ===========================================================================
 # Views
 # ===========================================================================
+
+class HealthCheckViewTests(APITestCase):
+
+    url = "/api/health/"
+
+    @patch("task_app.views.redis.from_url")
+    def test_health_check_returns_200_when_all_services_ok(self, mock_from_url):
+        mock_from_url.return_value.ping.return_value = True
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "ok")
+        self.assertEqual(response.data["checks"]["database"]["status"], "ok")
+        self.assertEqual(response.data["checks"]["redis"]["status"], "ok")
+
+    @patch("task_app.views.redis.from_url")
+    def test_health_check_does_not_require_auth(self, mock_from_url):
+        mock_from_url.return_value.ping.return_value = True
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    @patch("task_app.views.HealthCheckView._check_database")
+    @patch("task_app.views.redis.from_url")
+    def test_health_check_returns_503_when_database_is_down(
+        self, mock_from_url, mock_check_database
+    ):
+        mock_from_url.return_value.ping.return_value = True
+        mock_check_database.return_value = {"status": "error", "error": "connection refused"}
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data["status"], "error")
+        self.assertEqual(response.data["checks"]["database"]["status"], "error")
+
+    @patch("task_app.views.redis.from_url")
+    def test_health_check_returns_503_when_redis_is_down(self, mock_from_url):
+        mock_from_url.return_value.ping.side_effect = redis.ConnectionError("connection refused")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data["status"], "error")
+        self.assertEqual(response.data["checks"]["redis"]["status"], "error")
+
 
 class LoginViewTests(APITestCase):
 

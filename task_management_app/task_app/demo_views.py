@@ -109,3 +109,63 @@ class AsyncSyncToAsyncDemoView(APIView):
             },
             status=200,
         )
+
+
+class GracefulShutdownDemoView(APIView):
+    """
+    POST /api/demo/graceful-shutdown/
+
+    Simulates slow work with time.sleep so you can demo graceful shutdown:
+    start this endpoint, run the Go load generator, then Ctrl+C the server.
+    In-flight requests should finish; new ones should fail to connect.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    DEFAULT_SLEEP_SECONDS = 5
+    MAX_SLEEP_SECONDS = 30
+
+    def post(self, request):
+        raw_seconds = request.data.get("seconds", self.DEFAULT_SLEEP_SECONDS)
+        try:
+            sleep_seconds = float(raw_seconds)
+        except (TypeError, ValueError):
+            return Response(
+                data={"error": "'seconds' must be a number"},
+                status=400,
+            )
+
+        if sleep_seconds <= 0 or sleep_seconds > self.MAX_SLEEP_SECONDS:
+            return Response(
+                data={
+                    "error": f"'seconds' must be between 0 (exclusive) and {self.MAX_SLEEP_SECONDS}"
+                },
+                status=400,
+            )
+
+        request_id = request.headers.get("X-Request-Id", "unknown")
+        started_at = time.time()
+        logger.info(
+            "op=post view=GracefulShutdownDemoView status=started request_id=%s sleep_seconds=%s",
+            request_id,
+            sleep_seconds,
+        )
+
+        time.sleep(sleep_seconds)
+
+        elapsed = round(time.time() - started_at, 2)
+        logger.info(
+            "op=post view=GracefulShutdownDemoView status=completed request_id=%s elapsed=%ss",
+            request_id,
+            elapsed,
+        )
+        return Response(
+            data={
+                "status": "completed",
+                "request_id": request_id,
+                "sleep_seconds": sleep_seconds,
+                "elapsed_seconds": elapsed,
+                "message": "Request finished — server waited for this before shutting down",
+            },
+            status=200,
+        )
