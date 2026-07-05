@@ -1,4 +1,6 @@
-from library_app.models import Book, User
+import datetime
+
+from library_app.models import Book, BookIssue, User
 
 DEFAULT_PASSWORD = "Str0ngPassw0rd!"
 
@@ -23,3 +25,19 @@ def make_book(title="Dune", author="Frank Herbert", isbn="9780441172719", total_
         available_copies=kwargs.pop("available_copies", total_copies),
         **kwargs,
     )
+
+
+def make_issue(user, book, issue_date=None, return_date=None):
+    """Creates a BookIssue with a backdated `issue_date`/`due_date`.
+
+    `issue_date` is `auto_now_add=True`, so a normal `.save()` always
+    overwrites it with today -- QuerySet.update() bypasses that."""
+    issue = BookIssue.objects.create(user=user, book=book)
+    if issue_date is not None:
+        BookIssue.objects.filter(pk=issue.pk).update(
+            issue_date=issue_date,
+            due_date=issue_date + datetime.timedelta(days=BookIssue.ISSUE_DURATION_DAYS),
+            return_date=return_date,
+        )
+        issue.refresh_from_db()
+    return issue

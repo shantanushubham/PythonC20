@@ -1,3 +1,6 @@
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
+from django.db.models import Q, Count
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -11,6 +14,7 @@ from .serializers import (
     BookReturnSerializer,
     BookSerializer,
     LoginSerializer,
+    TopBookSerializer,
     UserSerializer,
 )
 
@@ -73,10 +77,14 @@ class BookIssueView(APIView):
 
     def get(self, request, *args, **kwargs):
         issues = BookIssue.objects.filter(user=request.user)
-        return Response(BookIssueSerializer(issues, many=True, context={"request": request}).data)
+        return Response(
+            BookIssueSerializer(issues, many=True, context={"request": request}).data
+        )
 
     def post(self, request, *args, **kwargs):
-        serializer = BookIssueSerializer(data=request.data, context={"request": request})
+        serializer = BookIssueSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         issue = serializer.save()
         return Response(
@@ -113,3 +121,17 @@ class BookReturnView(APIView):
         return Response(data)
 
 
+class MostIssuedBook(APIView):
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        six_months_ago = timezone.now().date() - relativedelta(months=6)
+
+        top_5_most_issued_books = Book.objects.annotate(
+            issued_count=Count("issues", filter=Q(issues__issue_date__gte=six_months_ago))
+        ).order_by("-issued_count")[:5]
+
+        serializer = TopBookSerializer(top_5_most_issued_books, many=True)
+        return Response(data=serializer.data, status=200)

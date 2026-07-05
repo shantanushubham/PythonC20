@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import BookIssueView, BookReturnView, BookViewSet, LoginView, MeView, SignUpView
+from .views import BookIssueView, BookReturnView, BookViewSet, LoginView, MeView, SignUpView, MostIssuedBook
 
 router = DefaultRouter()
 router.register('books', BookViewSet, basename='book')
@@ -12,5 +12,6 @@ urlpatterns = [
     path('me/', MeView.as_view(), name='me'),
     path('issues/', BookIssueView.as_view(), name='book-issue'),
     path('issues/<int:pk>/return/', BookReturnView.as_view(), name='book-return'),
+    path('most_issued/', MostIssuedBook.as_view(), name='most_issued'),
     path('', include(router.urls)),
 ]

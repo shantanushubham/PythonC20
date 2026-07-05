@@ -1,3 +1,4 @@
+from dataclasses import field
 import datetime
 
 from django.db import transaction
@@ -183,3 +184,18 @@ class BookReturnSerializer(serializers.ModelSerializer):
             book.available_copies += 1
             book.save(update_fields=["available_copies"])
         return instance
+
+class TopBookSerializer(serializers.ModelSerializer):
+
+    issued_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Book
+        fields = [
+            "id",
+            "title",
+            "author",
+            "isbn",
+            "issued_count"
+        ]
+
