@@ -1,14 +1,57 @@
+import random
+
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from academics.models import Department, Student, Teacher
+from academics.models import (
+    Department,
+    Enrollment,
+    Student,
+    Subject,
+    Teacher,
+    TeachingAssignment,
+)
 
 User = get_user_model()
 
 DEFAULT_PASSWORD = "password123"
 DEFAULT_COUNT = 50
 DEFAULT_DEPARTMENT_COUNT = 10
+DEFAULT_SUBJECT_COUNT = 25
+
+MAX_DEPARTMENTS_PER_SUBJECT = 3
+MAX_TEACHERS_PER_SUBJECT = 3
+MIN_ENROLLMENTS_PER_STUDENT = 1
+MAX_ENROLLMENTS_PER_STUDENT = 4
+
+SUBJECTS = [
+    "Data Structures and Algorithms",
+    "Object Oriented Programming",
+    "Database Management Systems",
+    "Operating Systems",
+    "Computer Networks",
+    "Software Engineering",
+    "Theory of Computation",
+    "Compiler Design",
+    "Artificial Intelligence",
+    "Machine Learning",
+    "Digital Electronics",
+    "Analog Electronics",
+    "Microprocessors and Microcontrollers",
+    "Signals and Systems",
+    "Control Systems",
+    "Electromagnetic Theory",
+    "Power Systems",
+    "Power Electronics",
+    "Engineering Mathematics",
+    "Engineering Physics",
+    "Engineering Mechanics",
+    "Strength of Materials",
+    "Thermodynamics",
+    "Fluid Mechanics",
+    "Structural Analysis",
+]
 
 ENGINEERING_DEPARTMENTS = [
     "Computer Science and Engineering",
@@ -413,6 +456,12 @@ class Command(BaseCommand):
             help=f"Number of departments to create (default: {DEFAULT_DEPARTMENT_COUNT}).",
         )
         parser.add_argument(
+            "--subjects",
+            type=int,
+            default=DEFAULT_SUBJECT_COUNT,
+            help=f"Number of subjects to create (default: {DEFAULT_SUBJECT_COUNT}).",
+        )
+        parser.add_argument(
             "--clear",
             action="store_true",
             help="Delete existing seed data before creating new records.",
@@ -421,11 +470,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         count = options["count"]
         department_count = options["departments"]
+        subject_count = options["subjects"]
         if count < 1:
             self.stderr.write(self.style.ERROR("--count must be at least 1."))
             return
         if department_count < 1:
             self.stderr.write(self.style.ERROR("--departments must be at least 1."))
+            return
+        if subject_count < 1:
+            self.stderr.write(self.style.ERROR("--subjects must be at least 1."))
             return
 
         if department_count > len(ENGINEERING_DEPARTMENTS):
@@ -433,6 +486,12 @@ class Command(BaseCommand):
                 self.style.ERROR(
                     f"Only {len(ENGINEERING_DEPARTMENTS)} engineering departments are available."
                 )
+            )
+            return
+
+        if subject_count > len(SUBJECTS):
+            self.stderr.write(
+                self.style.ERROR(f"Only {len(SUBJECTS)} subjects are available.")
             )
             return
 
@@ -452,12 +511,20 @@ class Command(BaseCommand):
             departments = self._create_departments(department_count)
             teachers = self._create_teachers(count)
             self._assign_hods(departments, teachers)
-            self._create_students(count, departments)
+            students = self._create_students(count, departments)
+            subjects = self._create_subjects(subject_count, departments)
+            teaching_assignments = self._create_teaching_assignments(
+                subjects, teachers
+            )
+            self._create_enrollments(students, teaching_assignments)
 
         self.stdout.write(self.style.SUCCESS("Seed data created successfully."))
         self._print_counts()
 
     def _clear_data(self):
+        Enrollment.objects.all().delete()
+        TeachingAssignment.objects.all().delete()
+        Subject.objects.all().delete()
         Student.objects.all().delete()
         Department.objects.all().delete()
         Teacher.objects.all().delete()
@@ -536,10 +603,91 @@ class Command(BaseCommand):
             )
             for index in range(count)
         ]
-        Student.objects.bulk_create(students)
+        return Student.objects.bulk_create(students)
+
+    def _create_subjects(self, count, departments):
+        subjects = [Subject(name=SUBJECTS[index]) for index in range(count)]
+        subjects = Subject.objects.bulk_create(subjects)
+
+        # Link each subject to a random handful of departments, then make sure
+        # every department ends up teaching at least one subject.
+        subject_department_links = {subject.id: set() for subject in subjects}
+        for subject in subjects:
+            sample_size = min(
+                len(departments), random.randint(1, MAX_DEPARTMENTS_PER_SUBJECT)
+            )
+            for department in random.sample(departments, sample_size):
+                subject_department_links[subject.id].add(department.id)
+
+        covered_department_ids = {
+            department_id
+            for department_ids in subject_department_links.values()
+            for department_id in department_ids
+        }
+        for department in departments:
+            if department.id not in covered_department_ids:
+                fallback_subject = random.choice(subjects)
+                subject_department_links[fallback_subject.id].add(department.id)
+
+        for subject in subjects:
+            subject.departments.set(subject_department_links[subject.id])
+
+        return subjects
+
+    def _create_teaching_assignments(self, subjects, teachers):
+        assignments = []
+        seen_pairs = set()
+        for subject in subjects:
+            sample_size = min(len(teachers), MAX_TEACHERS_PER_SUBJECT)
+            for teacher in random.sample(teachers, sample_size):
+                pair = (teacher.id, subject.id)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                assignments.append(
+                    TeachingAssignment(teacher=teacher, subject=subject)
+                )
+        return TeachingAssignment.objects.bulk_create(assignments)
+
+    def _create_enrollments(self, students, teaching_assignments):
+        assignments_by_department = {}
+        for assignment in teaching_assignments:
+            for department in assignment.subject.departments.all():
+                assignments_by_department.setdefault(department.id, []).append(
+                    assignment
+                )
+
+        enrollments = []
+        seen_pairs = set()
+        for student in students:
+            candidates = assignments_by_department.get(student.department_id, [])
+            if not candidates:
+                candidates = teaching_assignments
+
+            sample_size = min(
+                len(candidates),
+                random.randint(
+                    MIN_ENROLLMENTS_PER_STUDENT, MAX_ENROLLMENTS_PER_STUDENT
+                ),
+            )
+            sample_size = max(sample_size, min(len(candidates), 1))
+            for assignment in random.sample(candidates, sample_size):
+                pair = (student.id, assignment.id)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                enrollments.append(
+                    Enrollment(student=student, teaching_assignment=assignment)
+                )
+        return Enrollment.objects.bulk_create(enrollments)
 
     def _print_counts(self):
         self.stdout.write(f"Users: {User.objects.count()}")
         self.stdout.write(f"Departments: {Department.objects.count()}")
         self.stdout.write(f"Teachers: {Teacher.objects.count()}")
         self.stdout.write(f"Students: {Student.objects.count()}")
+        self.stdout.write(f"Subjects: {Subject.objects.count()}")
+        self.stdout.write(
+            f"Teaching Assignments: {TeachingAssignment.objects.count()}"
+        )
+        self.stdout.write(f"Enrollments: {Enrollment.objects.count()}")

@@ -72,7 +72,7 @@ class TeachingAssignment(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.teacher}" - {self.subject}
+        return f"{self.teacher} - {self.subject}"
 
 
 class Enrollment(models.Model):
